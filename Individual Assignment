@@ -1,0 +1,77 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <errno.h>
+#include <signal.h>
+#include <unistd.h>
+#include <string.h>
+
+#define PIN_LENGTH 6
+#define PIN_WAIT_INTERVAL 4
+
+void sigint_handler(int sig)
+{
+    printf("\nHave a nice day!\n");
+    exit(EXIT_SUCCESS);
+}
+
+int main(void)
+{
+    if (signal(SIGINT, sigint_handler) == SIG_ERR) {
+        perror("signal");
+        exit(1);
+    }
+
+    while (1) {
+        int pipefds[2];
+        char pin[PIN_LENGTH + 1];
+        char buffer[PIN_LENGTH + 1];
+
+        if (pipe(pipefds) == -1) {
+            perror("pipe");
+            exit(EXIT_FAILURE);
+        }
+
+        pid_t pid = fork();
+
+        if (pid == -1) {
+            perror("fork");
+            exit(EXIT_FAILURE);
+        }
+
+        if (pid == 0) {
+            close(pipefds[0]);
+            printf("\nHow many desserts do you want? \n");
+
+            char s[200];
+            if (fgets(s, 200, stdin) == NULL) {
+                perror("fgets");
+                exit(EXIT_FAILURE);
+            }
+
+            s[strcspn(s, "\n")] = 0; // remove trailing newline
+
+            if (strlen(s) > PIN_LENGTH) {
+                printf("Error: PIN is too long\n");
+                exit(EXIT_FAILURE);
+            }
+
+            strcpy(pin, s);
+            write(pipefds[1], pin, PIN_LENGTH + 1);
+            close(pipefds[1]);
+
+            sleep(PIN_WAIT_INTERVAL);
+            exit(EXIT_SUCCESS);
+        } else {
+            close(pipefds[1]);
+            read(pipefds[0], buffer, PIN_LENGTH + 1);
+            close(pipefds[0]);
+
+            printf("The dessert will be received %s\n", buffer);
+            wait(NULL);
+        }
+    }
+
+    return EXIT_SUCCESS;
+}
